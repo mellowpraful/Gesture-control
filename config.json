@@ -1,0 +1,19 @@
+{
+  "scroll_speed": 200,
+  "scroll_cooldown": 0.8,
+  "mouse_speed": 1.5,
+  "enable_mouse_control": true,
+  "enable_volume_control": true,
+  "enable_app_shortcuts": true,
+  "gesture_timeout": 2.0,
+  "min_detection_confidence": 0.8,
+  "min_tracking_confidence": 0.8,
+  "max_hands": 2,
+  "pinch_threshold": 0.05,
+  "shortcuts": {
+    "thumbs_up": "alt+tab",
+    "open_hand": "escape",
+    "peace_left": "left",
+    "peace_right": "right"
+  }
+}
