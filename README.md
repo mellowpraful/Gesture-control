@@ -28,13 +28,52 @@ A webcam-based hand gesture controller for scrolling, media control, fullscreen,
 
 ## Installation
 
-1. Install dependencies
-   ```bash
-   pip install -r requirements.txt
+### Easy Setup (Windows recommended)
+
+1. Install Python 3.10 or newer.
+   - Download it from python.org or use:
+   ```powershell
+   winget install -e --id Python.Python.3.10 --accept-package-agreements --accept-source-agreements
    ```
 
-2. Run the application
+2. Open PowerShell in the project folder and create a virtual environment.
+   ```powershell
+   C:\Users\<YourUser>\AppData\Local\Programs\Python\Python310\python.exe -m venv .venv
+   ```
+
+3. Activate the virtual environment.
+   ```powershell
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+4. Install the dependencies.
+   ```powershell
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
+   ```
+
+5. Install the Microsoft Visual C++ runtime if MediaPipe needs it.
+   ```powershell
+   winget install -e --id Microsoft.VCRedist.2015+.x64 --accept-package-agreements --accept-source-agreements
+   ```
+
+6. Run the app.
+   ```powershell
+   python main.py
+   ```
+
+### Linux/macOS Quick Setup
+
+1. Create and activate a virtual environment.
    ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. Install dependencies and run.
+   ```bash
+   python -m pip install --upgrade pip
+   python -m pip install -r requirements.txt
    python main.py
    ```
 
@@ -79,6 +118,27 @@ Notes:
 See advanced_examples.py for optional extensions (app launching, two-hand zoom, logging). These are examples and are not active in main.py by default.
 
 ## Troubleshooting
+
+**Installation fails or Python command not found on Windows?**
+- The Microsoft Store alias may shadow Python.
+- Use the full interpreter path once to create the venv:
+   - `C:\Users\<YourUser>\AppData\Local\Programs\Python\Python310\python.exe -m venv .venv`
+- Then run using `.venv\Scripts\python.exe`.
+
+**Virtual environment exists but packages fail to install/run?**
+- Your `.venv` may be tied to an old Python path.
+- Delete and recreate it:
+   - `Remove-Item -Recurse -Force .venv`
+   - `C:\Users\<YourUser>\AppData\Local\Programs\Python\Python310\python.exe -m venv .venv`
+
+**`python main.py` still says `No module named 'cv2'`?**
+- You are probably using a different Python interpreter than the one in `.venv`.
+- Activate the virtual environment first, or run the app with `.\.venv\Scripts\python.exe main.py`.
+- If you want to use system Python instead, install the requirements into that interpreter with `python -m pip install -r requirements.txt`.
+
+**ImportError: DLL load failed while importing MediaPipe bindings**
+- Install Microsoft Visual C++ Redistributable (2015+ x64):
+   - `winget install -e --id Microsoft.VCRedist.2015+.x64 --accept-package-agreements --accept-source-agreements`
 
 **Gestures not detected?**
 - Ensure good lighting

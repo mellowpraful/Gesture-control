@@ -270,10 +270,6 @@ class GestureControlUI:
         cv2.putText(frame, "CENTER", (width // 2 - 40, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 255), 1)
         cv2.putText(frame, "RIGHT", (width - 100, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 255), 1)
         
-        # Zone lines
-        cv2.line(frame, (width // 3, 0), (width // 3, height), (100, 100, 100), 1)
-        cv2.line(frame, (2 * width // 3, 0), (2 * width // 3, height), (100, 100, 100), 1)
-        
         # Instructions
         instructions = [
             "1 Finger: Scroll Down | 2 Fingers: Scroll Up | 4 Fingers: Fullscreen | 5 Fingers: Play/Pause",
