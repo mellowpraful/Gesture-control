@@ -1,12 +1,46 @@
+import os
+import sys
+
+
+def _ensure_project_venv():
+    """Re-launch the script with the project virtual environment when needed."""
+    workspace_root = os.path.dirname(os.path.abspath(__file__))
+    venv_python = os.path.join(workspace_root, ".venv", "Scripts", "python.exe")
+
+    if not os.path.exists(venv_python):
+        return
+
+    current_exe = os.path.normcase(os.path.abspath(sys.executable))
+    target_exe = os.path.normcase(os.path.abspath(venv_python))
+
+    if current_exe == target_exe:
+        return
+
+    os.execv(venv_python, [venv_python] + sys.argv)
+
+
+_ensure_project_venv()
+
 import cv2
 import mediapipe as mp
 import pyautogui
 import time
 import math
 import json
-import os
+import threading
+import importlib
 from collections import deque
 from enum import Enum
+
+try:
+    sr = importlib.import_module("speech_recognition")
+except ImportError:
+    sr = None
+
+try:
+    sd = importlib.import_module("sounddevice")
+except ImportError:
+    sd = None
 
 class GestureType(Enum):
     NONE = 0
@@ -172,17 +206,88 @@ class ActionController:
             "enable_mouse_control": True,
             "enable_volume_control": True,
             "enable_app_shortcuts": True,
-            "gesture_timeout": 2.0
+            "gesture_timeout": 2.0,
+            "enable_voice_control": True,
+            "voice_cooldown": 0.5,
+            "voice_phrase_time_limit": 2,
+            "voice_listen_timeout": 0.5,
+            "voice_chunk_seconds": 0.75,
+            "voice_commands": {
+                "scroll down": "scroll_down",
+                "scroll up": "scroll_up",
+                "volume down": "volume_down",
+                "volume up": "volume_up",
+                "play": "play_pause",
+                "pause": "play_pause",
+                "play pause": "play_pause",
+                "fullscreen": "fullscreen"
+            }
         }
         
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
-                    return json.load(f)
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        merged = default_config.copy()
+                        for key, value in loaded.items():
+                            if isinstance(merged.get(key), dict) and isinstance(value, dict):
+                                nested = merged[key].copy()
+                                nested.update(value)
+                                merged[key] = nested
+                            else:
+                                merged[key] = value
+                        return merged
             except:
                 return default_config
         
         return default_config
+
+    def _perform_action_by_name(self, action_name, current_time):
+        """Run a named action and append history when successful."""
+        action_performed = False
+
+        if action_name == "scroll_down":
+            pyautogui.scroll(-self.config["scroll_speed"])
+            action_performed = True
+            self.gesture_history.append(("SCROLL_DOWN", current_time))
+
+        elif action_name == "scroll_up":
+            pyautogui.scroll(self.config["scroll_speed"])
+            action_performed = True
+            self.gesture_history.append(("SCROLL_UP", current_time))
+
+        elif action_name == "play_pause":
+            pyautogui.press('space')
+            action_performed = True
+            self.gesture_history.append(("PLAY_PAUSE", current_time))
+
+        elif action_name == "volume_down":
+            pyautogui.press('volumedown')
+            action_performed = True
+            self.gesture_history.append(("VOLUME_DOWN", current_time))
+
+        elif action_name == "volume_up":
+            pyautogui.press('volumeup')
+            action_performed = True
+            self.gesture_history.append(("VOLUME_UP", current_time))
+
+        elif action_name == "fullscreen":
+            pyautogui.press('f')
+            action_performed = True
+            self.gesture_history.append(("FULLSCREEN", current_time))
+
+        if action_performed:
+            self.last_action_time = current_time
+
+        return action_performed
+
+    def execute_voice_action(self, action_name):
+        """Execute action requested by the voice controller."""
+        current_time = time.time()
+        if current_time - self.last_action_time < self.config.get("voice_cooldown", 0.5):
+            return False
+        return self._perform_action_by_name(action_name, current_time)
     
     def execute_action(self, gesture, hand_pos=None, hand_distance=None, screen_width=1920, screen_height=1080, pinch_distance=None):
         """Execute action based on gesture"""
@@ -191,40 +296,181 @@ class ActionController:
         if current_time - self.last_action_time < self.config["scroll_cooldown"]:
             return
         
-        action_performed = False
-        
+        action_name = None
+
         if gesture == GestureType.SCROLL_DOWN:
-            pyautogui.scroll(-self.config["scroll_speed"])
-            action_performed = True
-            self.gesture_history.append(("SCROLL_DOWN", current_time))
-        
+            action_name = "scroll_down"
+
         elif gesture == GestureType.SCROLL_UP:
-            pyautogui.scroll(self.config["scroll_speed"])
-            action_performed = True
-            self.gesture_history.append(("SCROLL_UP", current_time))
-        
+            action_name = "scroll_up"
+
         elif gesture == GestureType.PLAY_PAUSE:
-            pyautogui.press('space')
-            action_performed = True
-            self.gesture_history.append(("PLAY_PAUSE", current_time))
-        
+            action_name = "play_pause"
+
         elif gesture == GestureType.PINCH:
-            pyautogui.press('volumedown')
-            action_performed = True
-            self.gesture_history.append(("VOLUME_DOWN", current_time))
-        
+            action_name = "volume_down"
+
         elif gesture == GestureType.PEACE_SIGN:
-            pyautogui.press('volumeup')
-            action_performed = True
-            self.gesture_history.append(("VOLUME_UP", current_time))
-        
+            action_name = "volume_up"
+
         elif gesture == GestureType.OPEN_HAND:
-            pyautogui.press('f')
-            action_performed = True
-            self.gesture_history.append(("FULLSCREEN", current_time))
-        
-        if action_performed:
-            self.last_action_time = current_time
+            action_name = "fullscreen"
+
+        if action_name:
+            self._perform_action_by_name(action_name, current_time)
+
+
+class VoiceController:
+    """Background microphone listener for voice commands."""
+
+    def __init__(self, action_controller, ui=None):
+        self.action_controller = action_controller
+        self.ui = ui
+        self.config = action_controller.config
+        self.enabled = bool(self.config.get("enable_voice_control", True) and sr is not None)
+        self.voice_commands = self.config.get("voice_commands", {})
+        self.voice_cooldown = float(self.config.get("voice_cooldown", 0.5))
+        self.phrase_time_limit = float(self.config.get("voice_phrase_time_limit", 2))
+        self.listen_timeout = float(self.config.get("voice_listen_timeout", 0.5))
+        self.chunk_seconds = float(self.config.get("voice_chunk_seconds", 0.75))
+        self.last_voice_action_time = 0
+        self._stop_event = threading.Event()
+        self._thread = None
+        self.backend = None
+
+        self.recognizer = None
+        self.microphone = None
+
+        if self.enabled:
+            self.recognizer = sr.Recognizer()
+            self._initialize_backend()
+
+    def _initialize_backend(self):
+        """Pick a working audio backend for voice recognition."""
+        if sr is None:
+            self.enabled = False
+            return
+
+        try:
+            self.microphone = sr.Microphone()
+            self.backend = "speech_recognition"
+            return
+        except Exception:
+            self.microphone = None
+
+        if sd is not None:
+            self.backend = "sounddevice"
+            return
+
+        self.enabled = False
+
+    def start(self):
+        """Start listening thread if voice control is available."""
+        if not self.enabled or self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self._thread.start()
+
+    def is_listening(self):
+        """Return whether the background listener thread is running."""
+        return self._thread is not None and self._thread.is_alive()
+
+    def stop(self):
+        """Stop listening thread."""
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+
+    def _set_ui_voice_text(self, text):
+        if self.ui:
+            self.ui.last_voice_text = text
+            self.ui.last_voice_time = time.time()
+
+    def _resolve_voice_action(self, spoken_text):
+        lower = spoken_text.lower().strip()
+
+        if lower in self.voice_commands:
+            return self.voice_commands[lower]
+
+        for phrase, action in self.voice_commands.items():
+            if phrase in lower:
+                return action
+
+        return None
+
+    def _handle_spoken_text(self, spoken_text):
+        action_name = self._resolve_voice_action(spoken_text)
+        if not action_name:
+            return
+
+        now = time.time()
+        if now - self.last_voice_action_time < self.voice_cooldown:
+            return
+
+        if self.action_controller.execute_voice_action(action_name):
+            self.last_voice_action_time = now
+            self._set_ui_voice_text(f"Voice: {spoken_text}")
+
+    def _transcribe_audio(self, audio_data):
+        try:
+            spoken_text = self.recognizer.recognize_google(audio_data)
+        except sr.UnknownValueError:
+            return
+        except sr.RequestError:
+            self._set_ui_voice_text("Voice service unavailable")
+            time.sleep(1.0)
+            return
+        except Exception:
+            return
+
+        self._handle_spoken_text(spoken_text.lower().strip())
+
+    def _listen_loop(self):
+        """Continuously listen for voice commands."""
+        if self.backend == "speech_recognition" and self.microphone is not None:
+            with self.microphone as source:
+                try:
+                    self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                except Exception:
+                    pass
+
+            while not self._stop_event.is_set():
+                try:
+                    with self.microphone as source:
+                        audio = self.recognizer.listen(source, timeout=self.listen_timeout, phrase_time_limit=self.phrase_time_limit)
+                    self._transcribe_audio(audio)
+                except sr.WaitTimeoutError:
+                    continue
+                except Exception:
+                    continue
+            return
+
+        if self.backend == "sounddevice" and sd is not None:
+            sample_rate = 16000
+
+            while not self._stop_event.is_set():
+                try:
+                    audio_buffer = sd.rec(
+                        int(sample_rate * self.chunk_seconds),
+                        samplerate=sample_rate,
+                        channels=1,
+                        dtype="int16",
+                    )
+                    sd.wait()
+                    if self._stop_event.is_set():
+                        break
+
+                    if not audio_buffer.any():
+                        continue
+
+                    audio = sr.AudioData(audio_buffer.tobytes(), sample_rate, 2)
+                    self._transcribe_audio(audio)
+                except Exception:
+                    continue
+
+            return
+
+        self.enabled = False
 
 class GestureControlUI:
     """Handles on-screen UI and feedback"""
@@ -234,6 +480,10 @@ class GestureControlUI:
         self.current_gesture = "None"
         self.fps = 0
         self.last_time = time.time()
+        self.voice_enabled = False
+        self.voice_listening = False
+        self.last_voice_text = ""
+        self.last_voice_time = 0
         
     def update_fps(self):
         """Update FPS calculation"""
@@ -264,6 +514,23 @@ class GestureControlUI:
             gesture_text = display_names.get(gesture, gesture.name)
         cv2.putText(frame, f"Gesture: {gesture_text}", (10, 70),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+
+        if self.voice_enabled and self.voice_listening:
+            voice_status = "LISTENING"
+            voice_color = (0, 255, 0)
+        elif self.voice_enabled:
+            voice_status = "READY"
+            voice_color = (0, 255, 255)
+        else:
+            voice_status = "OFF"
+            voice_color = (0, 0, 255)
+
+        cv2.putText(frame, f"Voice: {voice_status}", (10, 105),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.7, voice_color, 2)
+
+        if self.last_voice_text and (time.time() - self.last_voice_time) < 3.0:
+            cv2.putText(frame, self.last_voice_text, (10, 135),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         
         # Zone indicators
         cv2.putText(frame, "LEFT", (20, height - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 255), 1)
@@ -273,7 +540,8 @@ class GestureControlUI:
         # Instructions
         instructions = [
             "1 Finger: Scroll Down | 2 Fingers: Scroll Up | 4 Fingers: Fullscreen | 5 Fingers: Play/Pause",
-            "Thumbs Up: No Gesture | Thumb+Index Pinch: Volume Down | Thumb+Middle Pinch: Volume Up | Q: Quit"
+            "Thumbs Up: No Gesture | Thumb+Index Pinch: Volume Down | Thumb+Middle Pinch: Volume Up",
+            "Voice: say scroll up/down, volume up/down, play/pause, fullscreen | Q: Quit"
         ]
         
         for i, text in enumerate(instructions):
@@ -293,13 +561,22 @@ def main():
     recognizer = GestureRecognizer()
     controller = ActionController()
     ui = GestureControlUI()
+    voice = VoiceController(controller, ui)
+    ui.voice_enabled = voice.enabled
     
     cap = cv2.VideoCapture(0)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
     print("Gesture Control System Started!")
+    if voice.enabled:
+        print("Voice control enabled")
+    else:
+        print("Voice control disabled (install SpeechRecognition and microphone support to enable)")
     print("Press 'q' to quit\n")
+
+    voice.start()
+    ui.voice_listening = voice.is_listening()
     
     while True:
         ret, frame = cap.read()
@@ -322,6 +599,7 @@ def main():
                 controller.execute_action(current_gesture, hand_pos, hand_distance, frame_width, frame_height)
         
         # Draw UI
+        ui.voice_listening = voice.is_listening()
         ui.draw_info(frame, current_gesture, results.multi_hand_landmarks)
         
         cv2.imshow("Advanced Gesture Control System", frame)
@@ -330,6 +608,7 @@ def main():
             print("\nShutting down...")
             break
     
+    voice.stop()
     cap.release()
     cv2.destroyAllWindows()
 

@@ -12,7 +12,15 @@ If you encounter issues, install individually:
 pip install opencv-python
 pip install mediapipe
 pip install pyautogui
+pip install SpeechRecognition
 ```
+
+If microphone input is unavailable, also install:
+```bash
+pip install pyaudio
+```
+
+The app now prefers `sounddevice` for microphone capture when available, so the default dependency install should usually be enough on Windows.
 
 ### Step 2: Run the application
 ```bash
@@ -40,6 +48,16 @@ Press "q" to quit at any time.
 ### 4) Ignored Gestures
 - Thumbs up: No gesture
 - 3 fingers: No gesture
+
+### 5) Voice Commands
+- "scroll down"
+- "scroll up"
+- "volume down"
+- "volume up"
+- "play" or "pause"
+- "fullscreen"
+
+Voice commands now use shorter capture windows, so they should feel faster. Lower `voice_chunk_seconds` in `config.json` if you want even less delay.
 
 ---
 
@@ -69,7 +87,10 @@ Edit `config.json`:
 ```json
 {
   "scroll_speed": 200,
-  "scroll_cooldown": 0.8
+  "scroll_cooldown": 0.8,
+  "enable_voice_control": true,
+  "voice_cooldown": 1.2,
+  "voice_phrase_time_limit": 3
 }
 ```
 

@@ -19,6 +19,7 @@ A webcam-based hand gesture controller for scrolling, media control, fullscreen,
 - On-screen gesture label and instructions
 - Multi-hand detection (up to 2 hands)
 - JSON config for scroll speed and cooldown
+- Optional voice control for common actions
 
 ## Requirements
 
@@ -51,6 +52,8 @@ A webcam-based hand gesture controller for scrolling, media control, fullscreen,
    python -m pip install --upgrade pip
    python -m pip install -r requirements.txt
    ```
+
+   Voice commands now use `SpeechRecognition` plus `sounddevice` for microphone capture on Windows, so the default install should be enough.
 
 5. Install the Microsoft Visual C++ runtime if MediaPipe needs it.
    ```powershell
@@ -93,6 +96,16 @@ Press "q" to quit at any time.
 - Thumb + index pinch: Volume Down
 - Thumb + middle pinch: Volume Up
 
+### Voice Commands
+- "scroll down"
+- "scroll up"
+- "volume down"
+- "volume up"
+- "play" or "pause"
+- "fullscreen"
+
+Voice commands are tuned for lower latency by default. You can reduce `voice_cooldown` or `voice_chunk_seconds` in `config.json` if you want them even faster.
+
 ### Ignored Gestures
 - Thumbs up: No gesture
 - 3 fingers: No gesture
@@ -104,7 +117,10 @@ Edit `config.json` to customize behavior used by the current app:
 ```json
 {
   "scroll_speed": 200,
-  "scroll_cooldown": 0.8
+   "scroll_cooldown": 0.8,
+   "enable_voice_control": true,
+   "voice_cooldown": 1.2,
+   "voice_phrase_time_limit": 3
 }
 ```
 
@@ -112,6 +128,7 @@ Notes:
 - Fullscreen uses the "f" key and depends on the active app.
 - Volume uses system volume keys.
 - Pinch thresholds are currently defined in code in main.py.
+- Voice commands are customizable via `voice_commands` in config.json.
 
 ## Optional Extensions
 
@@ -130,6 +147,11 @@ See advanced_examples.py for optional extensions (app launching, two-hand zoom, 
 - Delete and recreate it:
    - `Remove-Item -Recurse -Force .venv`
    - `C:\Users\<YourUser>\AppData\Local\Programs\Python\Python310\python.exe -m venv .venv`
+
+**Voice commands are disabled?**
+- Confirm the app prints `Voice control enabled` at startup.
+- If the primary microphone path fails, the app falls back to `sounddevice` automatically.
+- Check Windows microphone privacy settings if neither backend can access audio.
 
 **`python main.py` still says `No module named 'cv2'`?**
 - You are probably using a different Python interpreter than the one in `.venv`.

@@ -1,3 +1,5 @@
 opencv-python==4.8.0.76
 mediapipe==0.10.5
 pyautogui==0.9.53
+SpeechRecognition==3.10.4
+sounddevice==0.5.5

@@ -11,6 +11,15 @@
 - Thumbs up: No gesture (ignored)
 - 3 fingers: No gesture (reserved)
 
+## Voice Command Mapping
+
+- "scroll down": Scroll Down
+- "scroll up": Scroll Up
+- "volume down": Volume Down
+- "volume up": Volume Up
+- "play" / "pause": Play/Pause
+- "fullscreen": Fullscreen (sends "f")
+
 ## Project Structure
 
 ```
