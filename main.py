@@ -23,7 +23,16 @@ _ensure_project_venv()
 
 import cv2
 import mediapipe as mp
-import pyautogui
+try:
+    import pyautogui
+except Exception:
+    class _MissingPyAutoGUI:
+        def scroll(self, amt):
+            print(f"[pyautogui missing] scroll {amt}")
+        def press(self, key):
+            print(f"[pyautogui missing] press {key}")
+    pyautogui = _MissingPyAutoGUI()
+    print("Warning: `pyautogui` not installed — UI actions will be logged instead of sent.")
 import time
 import math
 import json
